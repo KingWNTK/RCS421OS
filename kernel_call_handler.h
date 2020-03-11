@@ -1,0 +1,13 @@
+#ifndef KERNEL_CALL_HANDLER_H
+#define KERNEL_CALL_HANDLER_H
+
+#include <comp421/hardware.h>
+#include <comp421/yalnix.h>
+
+#include "memory_manager.h"
+#include "trap_handler.h"
+#include "process_controller.h"
+
+int handle_getpid();
+
+#endif
