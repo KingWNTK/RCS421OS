@@ -297,6 +297,7 @@ int copy_user_space(void *brk, void *sp, ptl_node* new_pt_info) {
         void *cur_addr = pn_to_addr(i);
         int cur_pfn = pt0[i].pfn;
         memcpy(tmp, cur_addr, PAGESIZE);
+        int kernel_can_write = (pt0[i].kprot & PROT_WRITE);
         //grab a new phys page
         if(grab_pg(i, pt0[i].kprot | PROT_WRITE, pt0[i].uprot) == -1) {
             free(tmp);
@@ -306,7 +307,9 @@ int copy_user_space(void *brk, void *sp, ptl_node* new_pt_info) {
         //write data to the new phys page
         memcpy(cur_addr, tmp, PAGESIZE);
         //set the pte of the new page table
-        pt0[i].kprot = pt0[i].kprot ^ PROT_WRITE;
+        if(!kernel_can_write) {
+            pt0[i].kprot = pt0[i].kprot ^ PROT_WRITE;
+        }
         memcpy(new_pt + i, pt0 + i, sizeof(struct pte));
         //finally restore the current pfn 
         pt0[i].pfn = cur_pfn;

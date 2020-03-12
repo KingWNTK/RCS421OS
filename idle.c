@@ -4,7 +4,7 @@
 int main() {
     printf("running ide\n");
     while(1) {
-        printf("idle called pause\n");
+        printf("idle calling pause\n");
         Pause();
     }
 }

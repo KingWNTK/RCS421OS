@@ -11,58 +11,81 @@ void (*trap_vec_tb[TRAP_VECTOR_SIZE])(ExceptionInfo *);
 
 #undef LEVEL
 #define LEVEL 5
-
-void handle_trap_kernel(ExceptionInfo *info) {
-    TracePrintf(LEVEL, "trap kernel\n");
-    if(info->code == YALNIX_GETPID) {
-        info->regs[0] = (unsigned long)handle_getpid();
-    }
-    else if(info->code == YALNIX_FORK) {
-        info->regs[0] = (unsigned long)handle_fork();
-    }
-    
-}
-
 void do_schedule() {
-    if (cur_pcb != idle_pcb && --cur_pcb->tick_exe)
-        return;
-    //have to do ContextSwitch now
+    //have to do ContextSwitch
     //or keep cur_pcb unchanged and restore cur_pcb's tick_exe to 2
     if (ready_q.size) {
-        pcb *pre_pcb = cur_pcb;
         if (cur_pcb != idle_pcb) {
-            push_q(READY_Q, cur_pcb);
+            push_back_q(&ready_q, (void *)cur_pcb);
         }
-        cur_pcb = pop_q(READY_Q);
-        ContextSwitch(switch_ctx, &pre_pcb->ctx, pre_pcb, cur_pcb);
+        pcb *nxt = (pcb *)pop_front_q(&ready_q);
+        nxt->tick_exe = 2;
+        ContextSwitch(switch_ctx, &cur_pcb->ctx, cur_pcb, nxt);
     }
-    cur_pcb->tick_exe = 2;
+}
+
+void handle_trap_kernel(ExceptionInfo *info) {
+    store_exp_info(info);
+    TracePrintf(LEVEL, "trap kernel, code: %d\n", info->code);
+    if (info->code == YALNIX_GETPID) {
+        info->regs[0] = (unsigned long)handle_getpid();
+    } else if (info->code == YALNIX_FORK) {
+        info->regs[0] = (unsigned long)handle_fork();
+    } else if (info->code == YALNIX_DELAY) {
+        info->regs[0] = (unsigned long)handle_delay((int)info->regs[1]);
+    } else if (info->code == YALNIX_BRK) {
+        info->regs[0] = (unsigned long)handle_brk((void *)info->regs[1]);
+    } else if (info->code == YALNIX_EXEC) {
+        info->regs[0] = (unsigned long)handle_exec((char *)info->regs[1], (char **)info->regs[2], info);
+    } else if (info->code == YALNIX_EXIT) {
+        handle_exit((int)info->regs[1]);
+    } else if (info->code == YALNIX_WAIT) {
+        TracePrintf(LEVEL, "%d\n", *(int *)info->regs[1]);
+        info->regs[0] = (unsigned long)handle_wait((int *)info->regs[1]);
+    }
 }
 
 void handle_trap_clock(ExceptionInfo *info) {
+    store_exp_info(info);
     printf("trap clock\n");
     // TracePrintf(LEVEL, "current available page: %d\n", get_fpl_size());
-    do_schedule();
+    maintain_delay_q();
+    if (cur_pcb != idle_pcb) {
+        cur_pcb->tick_exe--;
+    }
+    if (!cur_pcb->tick_exe || (cur_pcb == idle_pcb && ready_q.size)) {
+        do_schedule();
+    }
 }
 
 void hanlde_trap_illegal(ExceptionInfo *info) {
+    store_exp_info(info);
+
     printf("trap illegal\n");
 }
 
 void handle_trap_memory(ExceptionInfo *info) {
+    store_exp_info(info);
+
     printf("trap memory\n");
     printf("%x\n", info->addr);
 }
 
 void handle_trap_math(ExceptionInfo *info) {
+    store_exp_info(info);
+
     printf("trap math\n");
 }
 
 void handle_trap_tty_receive(ExceptionInfo *info) {
+    store_exp_info(info);
+
     printf("trap tty receive\n");
 }
 
 void handle_trap_tty_transmit(ExceptionInfo *info) {
+    store_exp_info(info);
+
     printf("trap tty transmit\n");
 }
 

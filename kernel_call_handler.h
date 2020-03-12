@@ -10,4 +10,16 @@
 
 int handle_getpid();
 
+int handle_fork();
+
+int handle_delay(int delay);
+
+int handle_brk(void *addr);
+
+int handle_exec(char *filename, char ** argvec, ExceptionInfo *info);
+
+void handle_exit(int status);
+
+int handle_wait(int *status_ptr);
+
 #endif

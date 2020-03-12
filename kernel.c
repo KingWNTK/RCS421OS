@@ -104,7 +104,7 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
 
     idle_pcb->pid = 0;
     idle_pcb->pt_info = idle_pt_info;
-    idle_pcb->tick_exe = 2;
+    idle_pcb->tick_exe = 0;
 
     //then we initialize init's pcb
     pcb *new_pcb = (pcb *)malloc(sizeof(pcb));
