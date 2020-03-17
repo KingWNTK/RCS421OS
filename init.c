@@ -53,21 +53,66 @@ void test_wait() {
         char *argvec[] = {
             "add",
             "123",
-            "456",
+            "789",
             NULL};
         Exec(filename, argvec);
     }
 
-    while (1) {
-        printf("pause in init\n");
-        int stat = -1;
-        printf("start waiting\n");
-        int pid = Wait(&stat);
-        printf("ret from wait, child pid: %d, stat: %d\n", pid, stat);
-        Pause();
+    // while (1) {
+    int stat = -1;
+    printf("start waiting\n");
+    int pid = Wait(&stat);
+    printf("ret from wait, child pid: %d, stat: %d\n", pid, stat);
+    Pause();
+    // }
+}
+void test_exit() {
+    int ret = Fork();
+    if (ret != 0) {
+        char *filename = "add";
+        char *argvec[] = {
+            "add",
+            "123",
+            "789",
+            NULL};
+        Exec(filename, argvec);
     }
+
+    Exit(1);
 }
 
+void test_read_write() {
+    int pid = Fork();
+    if (pid == 0) {
+        char buf[1024];
+        while (1) {
+            int ret = TtyRead(0, buf, 1024);
+            printf("%.*s\n", ret, buf);
+            TtyWrite(1, buf, ret);
+        }
+    } else {
+        char buf[1024];
+        while (1) {
+            int ret = TtyRead(2, buf, 1024);
+            printf("%.*s\n", ret, buf);
+            TtyWrite(3, buf, ret);
+        }
+    }
+}
+void test_read() {
+    int pid = Fork();
+    char buf[1024];
+    char *word = "test ok\n";
+    while (1) {
+        int ret = TtyRead(0, buf, 1024);
+        printf("%.*s\n", ret, buf);
+        TtyWrite(0, buf, ret);
+    }
+}
 int main() {
-    test_wait();
+    // test_exit();
+    printf("running init\n");
+    while (1) {
+        test_read();
+    }
 }

@@ -2,11 +2,7 @@
 #define KERNEL_CALL_HANDLER_H
 
 #include <comp421/hardware.h>
-#include <comp421/yalnix.h>
 
-#include "memory_manager.h"
-#include "trap_handler.h"
-#include "process_controller.h"
 
 int handle_getpid();
 
@@ -21,5 +17,9 @@ int handle_exec(char *filename, char ** argvec, ExceptionInfo *info);
 void handle_exit(int status);
 
 int handle_wait(int *status_ptr);
+
+int handle_tty_read(int tty_id, void *buf, int len);
+
+int handle_tty_write(int tty_id, void *buf, int len);
 
 #endif

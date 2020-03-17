@@ -16,8 +16,6 @@
 #undef LEVEL
 #define LEVEL 5
 
-
-
 void test_memory_alloc() {
     printf("\n>>>>start testing memory alloc\ninit free pages: %d\n", get_fpl_size());
     char *t;
@@ -78,12 +76,11 @@ void test_ptl() {
 void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, char **cmd_args) {
     TracePrintf(LEVEL, "kernel start called\n");
 
-    init_trap_handler();
-    TracePrintf(LEVEL, "init trap handler done\n");
-
-    //init the memory manager
     init_memory_manager(orig_brk, pmem_size);
     TracePrintf(LEVEL, "init memory manager done\n");
+
+    init_trap_handler();
+    TracePrintf(LEVEL, "init trap handler done\n");
 
     init_process_controller();
     TracePrintf(LEVEL, "init process controller done\n");
@@ -97,7 +94,12 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     char *argv[1];
     argv[0] = NULL;
     idle_pcb = (pcb *)malloc(sizeof(pcb));
-    LoadProgram("idle", argv, info, get_pt0(), idle_pcb);
+    int ret = LoadProgram("idle", argv, info, get_pt0(), idle_pcb);
+    if (ret != 0) {
+        //can't even load the idle process, nothing we can do
+        TracePrintf(LEVEL, "KERNEL_START: can't even load the idle process, nothing we can do, going to halt\n");
+        Halt();
+    }
     ptl_node idle_pt_info;
     idle_pt_info.pfn = idle_pt_info.which_half = -1;
     idle_pt_info.nxt = NULL;
@@ -108,20 +110,28 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
 
     //then we initialize init's pcb
     pcb *new_pcb = (pcb *)malloc(sizeof(pcb));
-    if(init_pcb(new_pcb) == -1) {
-        //not enough memory
+    if (init_pcb(new_pcb) == -1) {
+        //don't even have space the init process's pcb, nothing we can do
+        TracePrintf(LEVEL, "KERNEL_START: don't even have space the init process's pcb, nothing we can do, going to halt\n");
+        Halt();
     }
 
     //copy the kernel stack of idle to init and context switch to init
-    ContextSwitch(copy_kernel_stack_and_switch, &idle_pcb->ctx, idle_pcb, new_pcb);
-    if(cur_pcb->pid == 0) {
-        //it's in the idle process
+    if (ContextSwitch(copy_kernel_stack_and_switch, &idle_pcb->ctx, idle_pcb, new_pcb) == -1) {
+        TracePrintf(LEVEL, "something wrong when calling ContextSwitch, going to halt\n");
+        Halt();
     }
-    else {
+    if (cur_pcb->pid == 0) {
+        //it's in the idle process
+    } else {
         //it's in the init process
-        LoadProgram("init", argv, info, get_pt0(), new_pcb);
+        ret = LoadProgram("init", argv, info, get_pt0(), new_pcb);
+        if (ret != 0) {
+            //can't load the init process
+            TracePrintf(LEVEL, "KERNEL_START: can't load the init process, going to halt\n");
+            Halt();
+        }
     }
 
     TracePrintf(LEVEL, "after KernelStart remaining available phys pages: %d\n", get_fpl_size());
-    
 }

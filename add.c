@@ -9,7 +9,7 @@ int main(int argc, char **argv) {
         printf("wrong arg");
     }
     else {
-        Delay(5);
+        Delay(1);
         int a = atoi(argv[1]);
         int b = atoi(argv[2]);
         printf("pid: %d, a + b = %d\n", GetPid(), a + b);

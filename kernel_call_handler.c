@@ -1,5 +1,11 @@
-#include "kernel_call_handler.h"
+#include <comp421/hardware.h>
+#include <comp421/yalnix.h>
+
 #include "load_program.h"
+#include "memory_manager.h"
+#include "trap_handler.h"
+#include "process_controller.h"
+
 #undef LEVEL
 #define LEVEL 5
 
@@ -9,9 +15,15 @@ void schedule_next() {
     if (ready_q.size) {
         pcb *nxt = (pcb *)pop_front_q(&ready_q);
         nxt->tick_exe = 2;
-        ContextSwitch(switch_ctx, &cur_pcb->ctx, cur_pcb, nxt);
+        if (ContextSwitch(switch_ctx, &cur_pcb->ctx, cur_pcb, nxt) == -1) {
+            TracePrintf(LEVEL, "something wrong when calling ContextSwitch, going to halt\n");
+            Halt();
+        }
     } else if (cur_pcb != idle_pcb) {
-        ContextSwitch(switch_ctx, &cur_pcb->ctx, cur_pcb, idle_pcb);
+        if (ContextSwitch(switch_ctx, &cur_pcb->ctx, cur_pcb, idle_pcb) == -1) {
+            TracePrintf(LEVEL, "something wrong when calling ContextSwitch, going to halt\n");
+            Halt();
+        }
     }
 }
 
@@ -22,19 +34,31 @@ int handle_getpid() {
 int handle_fork() {
     pcb *child_pcb = (pcb *)malloc(sizeof(pcb));
     if (init_pcb(child_pcb) == -1) {
-        //not enough memory
+        //not enough space for the new pcb
+        return ERROR;
     }
-    cur_pcb->tick_exe = 2;
-    push_back_q(&ready_q, (void *)cur_pcb);
-    pcb *pre_pcb = cur_pcb;
-    ContextSwitch(copy_region_0_and_switch, &cur_pcb->ctx, cur_pcb, child_pcb);
-    if (cur_pcb == pre_pcb) {
-        print_topo(cur_pcb);
-        return 0;
-    } else {
-        cur_pcb->parent = pre_pcb;
+    //update the child-parent relation
+    child_pcb->parent = cur_pcb;
+    push_back_q(&cur_pcb->children, child_pcb);
+    //push the child process into ready q
+    push_back_q(&ready_q, child_pcb);
+
+    if (get_fpl_size() < 4 + addr_to_pn(UP_TO_PAGE((void *)USER_STACK_LIMIT - cur_pcb->sp)) + addr_to_pn(UP_TO_PAGE(cur_pcb->brk))) {
+        //not enough space to fork the current process
+        return ERROR;
+    }
+
+    if (ContextSwitch(copy_region_0, &cur_pcb->ctx, cur_pcb, child_pcb) == -1) {
+        //not enough space for the new process
+        TracePrintf(LEVEL, "something wrong when calling ContextSwitch, going to halt\n");
+        Halt();
+    }
+    if (cur_pcb == child_pcb) {
         print_topo(cur_pcb);
         return cur_pcb->pid;
+    } else {
+        print_topo(cur_pcb);
+        return 0;
     }
 }
 
@@ -78,104 +102,148 @@ int handle_exec(char *filename, char **argvec, ExceptionInfo *info) {
     //TODO parameter check
     TracePrintf(LEVEL, "in exec\n");
 
-    // char **argv;
-    // int argc = 0;
-    // while(argvec[argc] != NULL) {
-    //     argc++;
-    // }
-    // argv = (char **)malloc((argc + 1) * sizeof(char *));
-    // int i;
-    // for(i = 0; i < argc; i++) {
-    //     argv[i] = (char *)malloc(strlen(argvec[i]) + 1);
-    //     memcpy(argv[i], argvec[i], strlen(argvec[i]) + 1);
-    //     TracePrintf(LEVEL, "argv[%d]: %s\n", i, argvec[i]);
-    // }
-    // argv[argc] = NULL;
-
     //need to copy the name since LoadProgram is not buffering it
     char *name = (char *)malloc(strlen(filename) + 1);
     memcpy(name, filename, strlen(filename) + 1);
-    TracePrintf(LEVEL, "before loading in exec\n");
     int ret = LoadProgram(filename, argvec, info, get_pt0(), cur_pcb);
+    if (ret == -1) {
+        //current process is still runnable
+        free(name);
+        return ERROR;
+    } else if (ret == -2) {
+        //current process is not runnable any more, need to terminate it
+        free(name);
+        handle_exit(ERROR);
+        //calling the handle exit will erase the kernel stack, so the following line will not execute
+        return ERROR;
+    }
     free(name);
-    // for(i = 0; i < argc; i++) {
-    //     free(argv[i]);
-    // }
-    // free(argv);
     return ret;
 }
 
 void handle_exit(int status) {
-    if (cur_pcb->parent->waiting) {
-        q_node *p = wait_q.head->nxt;
-        while (p != wait_q.tail) {
-            pcb *tmp = (pcb *)p->ptr;
-            TracePrintf(LEVEL, "searching wait_q, pid: %d\n", tmp->pid);
-            if (tmp == cur_pcb->parent) {
-                TracePrintf(LEVEL, "waiting parent found\n");
-                erase_before(p->nxt);
-                void **args;
-                args = (void **)malloc(sizeof(void *) * 2);
-                exit_status *es = (exit_status *)malloc(sizeof(exit_status));
-                es->pid = cur_pcb->pid;
-                es->status = status;
-                args[0] = tmp;
-                args[1] = es;
-                ContextSwitch(save_wait_ret, &cur_pcb->ctx, cur_pcb, args);
-                free(es);
-                free(args);
-                push_back_q(&ready_q, tmp);
-                break;
+    if (cur_pcb->parent) {
+        if (cur_pcb->parent->waiting) {
+            if (find_and_erase_q(&wait_q, cur_pcb->parent) == -1) {
+                //something wrong
+                //TODO
             }
-            p = p->nxt;
+            pcb *pa = cur_pcb->parent;
+            void **args;
+            args = (void **)malloc(sizeof(void *) * 2);
+            exit_status *es = (exit_status *)malloc(sizeof(exit_status));
+            es->pid = cur_pcb->pid;
+            es->status = status;
+            args[0] = pa;
+            args[1] = es;
+            if (ContextSwitch(save_wait_ret, &cur_pcb->ctx, cur_pcb, args) == -1) {
+                TracePrintf(LEVEL, "something wrong when calling ContextSwitch, going to halt\n");
+                Halt();
+            }
+            free(es);
+            free(args);
+            push_back_q(&ready_q, pa);
+        } else {
+            exit_status *es = (exit_status *)malloc(sizeof(exit_status));
+            es->pid = cur_pcb->pid;
+            es->parent_pid = cur_pcb->parent->pid;
+            es->status = status;
+            push_back_q(&exit_q, es);
         }
-    } else {
-        exit_status *es = (exit_status *)malloc(sizeof(exit_status));
-        es->pid = cur_pcb->pid;
-        es->parent_pid = cur_pcb->parent->pid;
-        es->status = status;
-        push_back_q(&exit_q, es);
     }
-    //clear all the child processes of this process in the exit_q
-    q_node *p = exit_q.head->nxt;
-    while (p != exit_q.tail) {
-        q_node *nxt = p->nxt;
-        if (((exit_status *)p->ptr)->parent_pid == cur_pcb->pid) {
-            free((exit_status *)p->ptr);
-            erase_before(nxt);
-        }
-        p = nxt;
-    }
-    TracePrintf(LEVEL, "cleaning the exit process\n");
-    //TODO free the resource used by this process
-    pcb *pre_pcb = cur_pcb;
     pcb *nxt_pcb = ready_q.size ? (pcb *)pop_front_q(&ready_q) : idle_pcb;
     if (nxt_pcb != idle_pcb) {
         nxt_pcb->tick_exe = 2;
     }
-    ContextSwitch(clean_and_switch, &pre_pcb->ctx, pre_pcb, nxt_pcb);
+    if (ContextSwitch(clean_and_switch, &cur_pcb->ctx, cur_pcb, nxt_pcb) == -1) {
+        TracePrintf(LEVEL, "something wrong when calling ContextSwitch, going to halt\n");
+        Halt();
+    }
 }
 
 int handle_wait(int *status_ptr) {
     TracePrintf(LEVEL, "in handle wait\n");
     q_node *p = exit_q.head->nxt;
     while (p != exit_q.tail) {
-        
         exit_status *tmp = (exit_status *)p->ptr;
-        TracePrintf(LEVEL, "%d %d %d\n", tmp->pid, tmp->parent_pid, tmp->status);
-
         if (tmp->parent_pid == cur_pcb->pid) {
-            erase_before(p->nxt);
+            erase_before(&exit_q, p->nxt);
             *status_ptr = tmp->status;
             return tmp->pid;
         }
         p = p->nxt;
     }
+    //no exited child and no running child
+    if (cur_pcb->children.size == 0) {
+        return ERROR;
+    }
 
-    //no exited child, put it to wait_q
+    //no exited child, but there's running child put it to wait_q
     push_back_q(&wait_q, cur_pcb);
     cur_pcb->waiting = 1;
     schedule_next();
+    //once its waken up, one of its child processes must have exited
     cur_pcb->waiting = 0;
     return (int)cur_pcb->exp_info->regs[0];
+}
+
+int handle_tty_read(int tty_id, void *buf, int len) {
+    tty_buf *term = &tty[tty_id];
+    if (term->reading) {
+        //if some process is reading, simply wait
+        push_back_q(&tty_read_q[tty_id], cur_pcb);
+        schedule_next();
+    }
+    
+    term->reading = 1;
+
+    if (term->in_buf.size == 0) {
+        //if there's nothing to read, go back to the front of the queue
+        push_front_q(&tty_read_q[tty_id], cur_pcb);
+        schedule_next();
+    }
+    //now we can read the terminal
+    char *line = (char *)pop_front_q(&term->in_buf);
+    int l = 0;
+    while (l < len && line[l] != '\n' && line[l] != '\r') {
+        l++;
+    }
+    l++;
+    memcpy(buf, line, l);
+    //remember to free this line
+    free(line);
+
+    if (tty_read_q[tty_id].size) {
+        //wake up a waiting process
+        pcb *p = (pcb *)pop_front_q(&tty_read_q[tty_id]);
+        push_back_q(&ready_q, p);
+    }
+
+    return l;
+}
+
+int handle_tty_write(int tty_id, void *buf, int len) {
+    tty_buf *term = &tty[tty_id];
+    if (term->writing) {
+        //if some process is writing, simply wait
+        push_back_q(&tty_write_q[tty_id], cur_pcb);
+        schedule_next();
+    }
+    //now we can write to the termnial
+    term->writing = 1;
+    memcpy(term->out_buf, buf, len);
+    TtyTransmit(tty_id, term->out_buf, len);
+
+    //wait until finishing transmission
+    push_front_q(&tty_write_q[tty_id], cur_pcb);
+    schedule_next();
+
+    term->writing = 0;
+    if (tty_write_q[tty_id].size) {
+        //wake up a waiting process
+        pcb *p = (pcb *)pop_front_q(&tty_write_q[tty_id]);
+        push_back_q(&ready_q, p);
+    }
+
+    return 0;
 }

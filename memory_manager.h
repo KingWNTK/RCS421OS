@@ -26,6 +26,7 @@ void reset_pg_tb_entry(int vpn);
  * functions manage the free physical pages
  */
 int get_fpl_size();
+//return -1 if we don't have enough memory
 int grab_pg(int vpn, int kprot, int uprot);
 void free_pg(int vpn);
 
@@ -33,20 +34,23 @@ void free_pg(int vpn);
  * functions operate on page table list
  */
 void push_ptl(int pfn, int which_half);
+//return -1 if we don't have enough memory
 ptl_node pop_ptl();
-int add_ptl();
 
 
 /**
  * functions used to perform context switch and fork
  */
 void change_pt0(ptl_node pt_info);
+//return -1 if we don't have enough memory
 int copy_kernel_stack(void *kernel_stack_cp, ptl_node* new_pt_info);
+//return -1 if we don't have enough memory
 int copy_user_space(void *brk, void *sp, ptl_node* new_pt_info);
 
 /**
  * implementation of SetKernelBrk
  */
+//return -1 if we don't have enough memory
 int SetKernelBrk(void *addr);
 
 /**
