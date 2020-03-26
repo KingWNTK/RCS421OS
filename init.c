@@ -113,6 +113,6 @@ int main() {
     // test_exit();
     printf("running init\n");
     while (1) {
-        test_read();
+        test_wait();
     }
 }

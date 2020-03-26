@@ -214,10 +214,8 @@ SavedContext *copy_kernel_stack_and_switch(SavedContext *ctxp, void *p1, void *p
     //trying to get current process'es info
     pcb *pcb1 = (pcb *)p1, *pcb2 = (pcb *)p2;
     pcb2->ctx = pcb1->ctx;
-    void *tmp = malloc(KERNEL_STACK_SIZE);
-    memcpy(tmp, KERNEL_STACK_BASE, KERNEL_STACK_SIZE);
     //copy the kernel stack into p2
-    if (copy_kernel_stack(tmp, &pcb2->pt_info) == -1) {
+    if (copy_kernel_stack(KERNEL_STACK_BASE, &pcb2->pt_info) == -1) {
         //there's nothing we can do, will need to halt the machine
         TracePrintf(LEVEL, "CTX_SWITCH: Run out of memory when copying kernel stack, going to halt\n");
         Halt();
@@ -225,7 +223,6 @@ SavedContext *copy_kernel_stack_and_switch(SavedContext *ctxp, void *p1, void *p
     change_pt0(pcb2->pt_info);
     // TracePrintf(LEVEL, "change pt0 done\n");
     cur_pcb = pcb2;
-    free(tmp);
     return &pcb2->ctx;
 }
 
@@ -236,10 +233,9 @@ SavedContext *copy_region_0(SavedContext *ctxp, void *p1, void *p2) {
     pcb2->ctx = pcb1->ctx;
     pcb2->sp = pcb1->sp;
     pcb2->brk = pcb1->brk;
-    void *tmp = malloc(KERNEL_STACK_SIZE);
-    memcpy(tmp, KERNEL_STACK_BASE, KERNEL_STACK_SIZE);
+
     //copy the kernel stack into p2
-    if (copy_kernel_stack(tmp, &pcb2->pt_info) == -1) {
+    if (copy_kernel_stack(KERNEL_STACK_BASE, &pcb2->pt_info) == -1) {
         //there's nothing we can do, will need to halt the machine
         TracePrintf(LEVEL, "CTX_SWITCH: Run out of memory when copying kernel stack, going to halt\n");
         Halt();
@@ -254,7 +250,6 @@ SavedContext *copy_region_0(SavedContext *ctxp, void *p1, void *p2) {
     // TracePrintf(LEVEL, "copy user space done\n");
     // change_pt0(pcb2->pt_info);
     // cur_pcb = pcb2;
-    free(tmp);
     return ctxp;
 }
 
@@ -265,10 +260,9 @@ SavedContext *copy_region_0_and_switch(SavedContext *ctxp, void *p1, void *p2) {
     pcb2->ctx = pcb1->ctx;
     pcb2->sp = pcb1->sp;
     pcb2->brk = pcb1->brk;
-    void *tmp = malloc(KERNEL_STACK_SIZE);
-    memcpy(tmp, KERNEL_STACK_BASE, KERNEL_STACK_SIZE);
+  
     //copy the kernel stack into p2
-    if (copy_kernel_stack(tmp, &pcb2->pt_info) == -1) {
+    if (copy_kernel_stack(KERNEL_STACK_BASE, &pcb2->pt_info) == -1) {
         //there's nothing we can do, will need to halt the machine
         TracePrintf(LEVEL, "CTX_SWITCH: Run out of memory when copying kernel stack, going to halt\n");
         Halt();
@@ -284,7 +278,6 @@ SavedContext *copy_region_0_and_switch(SavedContext *ctxp, void *p1, void *p2) {
     change_pt0(pcb2->pt_info);
     // TracePrintf(LEVEL, "change pt0 done\n");
     cur_pcb = pcb2;
-    free(tmp);
     return &pcb2->ctx;
 }
 
