@@ -195,7 +195,6 @@ int init_process_controller() {
 
 void store_exp_info(ExceptionInfo *info) {
     cur_pcb->exp_info = info;
-    cur_pcb->sp = info->sp;
 }
 
 // void restore_exp_info(ExceptionInfo *info) {
@@ -231,7 +230,7 @@ SavedContext *copy_region_0(SavedContext *ctxp, void *p1, void *p2) {
     //trying to get current process'es info
     pcb *pcb1 = (pcb *)p1, *pcb2 = (pcb *)p2;
     pcb2->ctx = pcb1->ctx;
-    pcb2->sp = pcb1->sp;
+    pcb2->stack_base = pcb1->stack_base;
     pcb2->brk = pcb1->brk;
 
     //copy the kernel stack into p2
@@ -242,7 +241,7 @@ SavedContext *copy_region_0(SavedContext *ctxp, void *p1, void *p2) {
     }
     // TracePrintf(LEVEL, "copy kernel stack done\n");
     // TracePrintf(LEVEL, "pcb1 brk: 0x%x, pcb2 sp: 0x%x\n", pcb1->brk, pcb1->sp);
-    if (copy_user_space(pcb2->brk, pcb2->sp, &pcb2->pt_info) == -1) {
+    if (copy_user_space(pcb2->brk, pcb2->stack_base, &pcb2->pt_info) == -1) {
         //there's nothing we can do, will need to halt the machine
         TracePrintf(LEVEL, "CTX_SWITCH: Run out of memory when copying user space, going to halt\n");
         Halt();
@@ -258,7 +257,7 @@ SavedContext *copy_region_0_and_switch(SavedContext *ctxp, void *p1, void *p2) {
     //trying to get current process'es info
     pcb *pcb1 = (pcb *)p1, *pcb2 = (pcb *)p2;
     pcb2->ctx = pcb1->ctx;
-    pcb2->sp = pcb1->sp;
+    pcb2->stack_base = pcb1->stack_base;
     pcb2->brk = pcb1->brk;
   
     //copy the kernel stack into p2
@@ -269,7 +268,7 @@ SavedContext *copy_region_0_and_switch(SavedContext *ctxp, void *p1, void *p2) {
     }
     // TracePrintf(LEVEL, "copy kernel stack done\n");
     // TracePrintf(LEVEL, "pcb1 brk: 0x%x, pcb2 sp: 0x%x\n", pcb1->brk, pcb1->sp);
-    if (copy_user_space(pcb2->brk, pcb2->sp, &pcb2->pt_info) == -1) {
+    if (copy_user_space(pcb2->brk, pcb2->stack_base, &pcb2->pt_info) == -1) {
         //there's nothing we can do, will need to halt the machine
         TracePrintf(LEVEL, "CTX_SWITCH: Run out of memory when copying user space, going to halt\n");
         Halt();

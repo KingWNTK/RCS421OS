@@ -164,7 +164,7 @@ LoadProgram(char *name, char **args, ExceptionInfo *exp_info, struct pte *pt0, p
     // >>>> The value of cpp was initialized above.
     exp_info->sp = (char *)cpp;
 
-    cur_pcb->sp = (char *)cpp;
+    cur_pcb->stack_base = USER_STACK_LIMIT - (stack_npg << PAGESHIFT);
 
     /*
      *  Free all the old physical memory belonging to this process,

@@ -26,8 +26,9 @@ typedef struct pcb {
     int tick_delay;
     //current brk;
     void *brk;
-    //current sp, this is useful to copy the user stack
-    void *sp;
+    //current base of the user stack, since user stack never shrink
+    //address above stack_base under KERNEL_STACK_BASE is valid for the user stack
+    void *stack_base;
     //the page table info, describe which phys page
     //and which half is this page table using
     ptl_node pt_info;
@@ -42,6 +43,12 @@ typedef struct pcb {
 
     ExceptionInfo *exp_info;
 } pcb;
+
+typedef struct write_node {
+    pcb *p;
+    void *buf;
+    int len;
+}write_node;
 
 typedef struct exit_status {
     int pid;

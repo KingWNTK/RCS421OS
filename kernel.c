@@ -2,10 +2,10 @@
 #include <comp421/yalnix.h>
 #include <stdio.h>
 
-#include "memory_manager.h"
-#include "trap_handler.h"
 #include "load_program.h"
+#include "memory_manager.h"
 #include "process_controller.h"
+#include "trap_handler.h"
 /**
  * This kernel file contains the data structures 
  * and common functions the kernel
@@ -21,10 +21,10 @@ void test_memory_alloc() {
     char *t;
     t = (char *)malloc(100000);
     char *c = (char *)malloc(10000);
+    free(c);
     free(t);
     t = (char *)malloc(10000);
     free(t);
-    free(c);
     printf("current free pages: %d\n>>>>end testing memory alloc\n\n", get_fpl_size());
 }
 
@@ -40,9 +40,13 @@ void test_grab_free() {
     for (i = 0; i < 10; i++) {
         grab_pg(700 + i, PROT_READ | PROT_WRITE, 0);
     }
-    for (i = 0; i < 110; i++) {
+    for (i = 0; i < 200; i++) {
         free_pg(600 + i);
     }
+    // int t = 530;
+    // while(get_fpl_size()) {
+    //     grab_pg(600, PROT_READ | PROT_WRITE, 0);
+    // }
     printf(">>>>end testing grab free\n\n");
 }
 
@@ -58,17 +62,20 @@ void test_ptl() {
         printf("current fpl size: %d\n\n", get_fpl_size());
     }
     for (i = 0; i < 5; i += 2) {
+        printf("%d\n", i);
         push_ptl(nd[i].pfn, nd[i].which_half);
         printf("pushed: (%d, %d), ptl now looks like: ", nd[i].pfn, nd[i].which_half);
         print_ptl();
         printf("current fpl size: %d\n\n", get_fpl_size());
     }
+    
     for (i = 1; i < 5; i += 2) {
         push_ptl(nd[i].pfn, nd[i].which_half);
         printf("pushed: (%d, %d), ptl now looks like: ", nd[i].pfn, nd[i].which_half);
         print_ptl();
         printf("current fpl size: %d\n\n", get_fpl_size());
     }
+
 
     printf(">>>>end testing page table list\n\n");
 }
@@ -86,14 +93,14 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     TracePrintf(LEVEL, "init process controller done\n");
 #ifdef MEMORY_MANAGER_UNIT_TEST
     test_grab_free();
-    test_memory_alloc();
-    test_ptl();
+    // test_memory_alloc();
+    // test_ptl();
 #endif
     //now we should get ready to load the first program.
     //we first load idle, and use the current region 0 as its region 0
+    idle_pcb = (pcb *)malloc(sizeof(pcb));
     char *argv[1];
     argv[0] = NULL;
-    idle_pcb = (pcb *)malloc(sizeof(pcb));
     int ret = LoadProgram("idle", argv, info, get_pt0(), idle_pcb);
     if (ret != 0) {
         //can't even load the idle process, nothing we can do
@@ -125,7 +132,12 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
         //it's in the idle process
     } else {
         //it's in the init process
-        ret = LoadProgram("init", argv, info, get_pt0(), new_pcb);
+        if(cmd_args[0] == NULL) {
+            ret = LoadProgram("init", cmd_args, info, get_pt0(), new_pcb);
+        }
+        else {
+            ret = LoadProgram(cmd_args[0], cmd_args, info, get_pt0(), new_pcb);
+        }
         if (ret != 0) {
             //can't load the init process
             TracePrintf(LEVEL, "KERNEL_START: can't load the init process, going to halt\n");

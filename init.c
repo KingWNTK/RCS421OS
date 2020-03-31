@@ -109,10 +109,25 @@ void test_read() {
         TtyWrite(0, buf, ret);
     }
 }
+void test_write() {
+    int pid = Fork();
+    if (pid == 0) {
+        while (1) {
+            Delay(1);
+            TtyWrite(1, "123456789\n", 10);
+        }
+    } else {
+        while (1) {
+            Delay(1);
+            TtyWrite(3, "123456789\n", 10);
+
+        }
+    }
+}
 int main() {
     // test_exit();
     printf("running init\n");
     while (1) {
-        test_wait();
+        test_write();
     }
 }

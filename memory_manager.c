@@ -8,7 +8,7 @@
 #define VMEM_0_PN addr_to_pn(VMEM_0_LIMIT)
 
 #undef LEVEL
-#define LEVEL 5
+#define LEVEL 15
 
 //the initial page table of kernel
 static struct pte pg_tb[PAGE_TABLE_LEN * 2];
@@ -30,7 +30,7 @@ static ptl_node ptl_head;
 static int ptl_size;
 
 //reserve a whole page in case we need it
-static int tmp_vpn;
+static int tmp_vpn_0, tmp_vpn_1;
 
 void print_kernel_brk() {
     TracePrintf(LEVEL, "MEM_MGR: current kernel brk is: %d 0x%x\n", addr_to_pn(kernel_brk), kernel_brk);
@@ -142,9 +142,9 @@ void free_pg(int vpn) {
 //clear the pt0
 void clear_pt0(ptl_node *pt_info) {
     //use the reserved tmp page to clear the page table
-    set_pg_tb_entry(tmp_vpn, 1, PROT_READ | PROT_WRITE, 0, pt_info->pfn);
-    WriteRegister(REG_TLB_FLUSH, (RCS421RegVal)pn_to_addr(tmp_vpn));
-    struct pte *pt = (struct pte *)(pt_info->which_half == 0 ? pn_to_addr(tmp_vpn) : pn_to_addr(tmp_vpn) + PAGE_TABLE_SIZE);
+    set_pg_tb_entry(tmp_vpn_0, 1, PROT_READ | PROT_WRITE, 0, pt_info->pfn);
+    WriteRegister(REG_TLB_FLUSH, (RCS421RegVal)pn_to_addr(tmp_vpn_0));
+    struct pte *pt = (struct pte *)(pt_info->which_half == 0 ? pn_to_addr(tmp_vpn_0) : pn_to_addr(tmp_vpn_0) + PAGE_TABLE_SIZE);
     memset(pt, 0, PAGE_TABLE_SIZE);
 }
 
@@ -162,6 +162,7 @@ void push_ptl(int pfn, int which_half) {
                 //delete p from page table list
                 pre->nxt = p->nxt;
                 ptl_size--;
+                printf("%p %d\n", p, p->pfn);
                 free(p);
                 return;
             }
@@ -253,66 +254,51 @@ void change_pt0(ptl_node pt_info) {
 int copy_kernel_stack(void *kernel_stack_cp, ptl_node *new_pt_info) {
     TracePrintf(LEVEL, "MEM_MGR: copying current kernel stack\n");
     //use an entry in current pt0 to copy kernel stack
-    pg_tb[tmp_vpn].pfn = new_pt_info->pfn;
-    WriteRegister(REG_TLB_FLUSH, (RCS421RegVal)pn_to_addr(tmp_vpn));
-    struct pte *new_pt = (struct pte *)(new_pt_info->which_half == 0 ? pn_to_addr(tmp_vpn) : pn_to_addr(tmp_vpn) + PAGE_TABLE_SIZE);
-    void *cur_addr = (void *)MEM_INVALID_SIZE;
-    struct pte org_pte;
-    memcpy(&org_pte, pt0 + MEM_INVALID_PAGES, sizeof(struct pte));
+    pg_tb[tmp_vpn_0].pfn = new_pt_info->pfn;
+    WriteRegister(REG_TLB_FLUSH, (RCS421RegVal)pn_to_addr(tmp_vpn_0));
+    struct pte *new_pt = (struct pte *)(new_pt_info->which_half == 0 ? pn_to_addr(tmp_vpn_0) : pn_to_addr(tmp_vpn_0) + PAGE_TABLE_SIZE);
     int i;
     for (i = 0; i < KERNEL_STACK_PAGES; i++) {
         //try to grab a free page
-        if (grab_pg(MEM_INVALID_PAGES, PROT_READ | PROT_WRITE, 0) == -1) {
+        if (grab_pg(tmp_vpn_1, PROT_READ | PROT_WRITE, 0) == -1) {
             return -1;
         }
         //copy this page of kernel stack into that free page
-        memcpy(cur_addr, kernel_stack_cp + (i * PAGESIZE), PAGESIZE);
+        memcpy(pn_to_addr(tmp_vpn_1), kernel_stack_cp + (i * PAGESIZE), PAGESIZE);
         //copy the pte into the new page table
-        memcpy(new_pt + i + addr_to_pn(KERNEL_STACK_BASE), pt0 + MEM_INVALID_PAGES, sizeof(struct pte));
+        memcpy(new_pt + i + addr_to_pn(KERNEL_STACK_BASE), pg_tb + tmp_vpn_1, sizeof(struct pte));
     }
-    memcpy(pt0 + MEM_INVALID_PAGES, &org_pte, sizeof(struct pte));
-    WriteRegister(REG_TLB_FLUSH, (RCS421RegVal)pn_to_addr(MEM_INVALID_PAGES));
 
     return 0;
 }
 
-int copy_user_space(void *brk, void *sp, ptl_node *new_pt_info) {
+int copy_user_space(void *brk, void *stack_base, ptl_node *new_pt_info) {
     TracePrintf(LEVEL, "MEM_MGR: copying current user space\n");
     int brk_npg = addr_to_pn((void *)UP_TO_PAGE(brk));
-    int stack_npg = addr_to_pn((void *)DOWN_TO_PAGE(sp));
+    int stack_npg = addr_to_pn((void *)DOWN_TO_PAGE(stack_base));
     //use a temp page to copy all the stuff
     char *tmp = malloc(PAGESIZE);
-    //map the new page table's pfn into tmp_vpn
-    set_pg_tb_entry(tmp_vpn, 1, PROT_READ | PROT_WRITE, 0, new_pt_info->pfn);
-    WriteRegister(REG_TLB_FLUSH, (RCS421RegVal)pn_to_addr(tmp_vpn));
+    //map the new page table's pfn into tmp_vpn_0
+    set_pg_tb_entry(tmp_vpn_0, 1, PROT_READ | PROT_WRITE, 0, new_pt_info->pfn);
+    WriteRegister(REG_TLB_FLUSH, (RCS421RegVal)pn_to_addr(tmp_vpn_0));
 
-    struct pte *new_pt = (struct pte *)(new_pt_info->which_half == 0 ? pn_to_addr(tmp_vpn) : pn_to_addr(tmp_vpn) + PAGE_TABLE_SIZE);
+    struct pte *new_pt = (struct pte *)(new_pt_info->which_half == 0 ? pn_to_addr(tmp_vpn_0) : pn_to_addr(tmp_vpn_0) + PAGE_TABLE_SIZE);
     int i;
     for (i = MEM_INVALID_PAGES; i < addr_to_pn(USER_STACK_LIMIT); i++) {
-        if (i == brk_npg) {
+        if(i == brk_npg) {
             i = stack_npg;
         }
-        void *cur_addr = pn_to_addr(i);
-        int cur_pfn = pt0[i].pfn;
-        memcpy(tmp, cur_addr, PAGESIZE);
-        int kernel_can_write = (pt0[i].kprot & PROT_WRITE);
         //grab a new phys page
-        if (grab_pg(i, pt0[i].kprot | PROT_WRITE, pt0[i].uprot) == -1) {
+        if (grab_pg(tmp_vpn_1, PROT_READ | PROT_WRITE, 0) == -1) {
             free(tmp);
             return -1;
         }
-        // TracePrintf(LEVEL, "kprot %d, uprot %d\n", pt0[i].kprot, pt0[i].uprot);
         //write data to the new phys page
-        memcpy(cur_addr, tmp, PAGESIZE);
+        memcpy(pn_to_addr(tmp_vpn_1), pn_to_addr(i), PAGESIZE);
         //set the pte of the new page table
-        if (!kernel_can_write) {
-            pt0[i].kprot = pt0[i].kprot ^ PROT_WRITE;
-        }
-        memcpy(new_pt + i, pt0 + i, sizeof(struct pte));
-        //finally restore the current pfn
-        pt0[i].pfn = cur_pfn;
-        WriteRegister(REG_TLB_FLUSH, (RCS421RegVal)cur_addr);
-        //we've done copying everything below brk, and then we should copy the user stack
+        memcpy(new_pt + i, pg_tb + tmp_vpn_1, sizeof(struct pte));
+        (new_pt + i)->kprot = pt0[i].kprot;
+        (new_pt + i)->uprot = pt0[i].uprot;
     }
     free(tmp);
     return 0;
@@ -381,14 +367,16 @@ int init_memory_manager(void *org_brk, unsigned int pmem_size) {
 
     // printf("After working on itr, itr is now: 0x%x\n", pn_to_addr(itr));
 
-    //have to call malloc here to let malloc know that we want to reserve three vpn for use
-    malloc(PAGESIZE * 3);
+    //have to call malloc here to let malloc know that we want to reserve four vpn for use
+    malloc(PAGESIZE * 4);
     //reserve this vpn as the list head
     fpl_head_vpn = itr;
     //reserve this vpn to read page table 0
     pt0_vpn = itr + 1;
-    //reserve this vpn in case we need it
-    tmp_vpn = itr + 2;
+    //reserve some vpn in case we need it
+    tmp_vpn_0 = itr + 2;
+    tmp_vpn_1 = itr + 3;
+
 
     //set the pfn to addr_to_pn(MEM_INVALID_SIZE), since it is currently the head
     set_pg_tb_entry(fpl_head_vpn, 1, PROT_READ | PROT_WRITE, 0, addr_to_pn(MEM_INVALID_SIZE));
@@ -398,13 +386,14 @@ int init_memory_manager(void *org_brk, unsigned int pmem_size) {
     //first link pages from MEM_INVALID_SIZE to VMEM_0_LIMT
     //since we can't access address of 0 to MEM_INVALID_SIZE yet
     void *p = (void *)MEM_INVALID_SIZE;
-    while ((ll)p + PAGESIZE < VMEM_0_LIMIT) {
+    while ((ll)p + PAGESIZE < KERNEL_STACK_BASE) {
         *(ll *)p = (ll)p + PAGESIZE;
         p += PAGESIZE;
         fpl_size++;
     }
     //then link pages higher than the kernel break to phys_limt
     *(ll *)p = (ll)kernel_brk;
+    printf("kernel break pg: %d\n", addr_to_pn(kernel_brk));
     p = kernel_brk;
     fpl_size++;
     ll pmem_limit = DOWN_TO_PAGE(pmem_size);
