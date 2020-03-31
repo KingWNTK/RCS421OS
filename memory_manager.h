@@ -48,6 +48,8 @@ int copy_kernel_stack(void *kernel_stack_cp, ptl_node* new_pt_info);
 //return -1 if we don't have enough memory
 int copy_user_space(void *brk, void *sp, ptl_node* new_pt_info);
 
+int test_heap();
+
 /**
  * implementation of SetKernelBrk
  */

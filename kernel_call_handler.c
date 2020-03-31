@@ -3,8 +3,8 @@
 
 #include "load_program.h"
 #include "memory_manager.h"
-#include "trap_handler.h"
 #include "process_controller.h"
+#include "trap_handler.h"
 
 #undef LEVEL
 #define LEVEL 5
@@ -27,7 +27,20 @@ void schedule_next() {
     }
 }
 
-int handle_getpid() {
+int check_ptr(void *ptr) {
+    if (ptr > USER_STACK_LIMIT || ptr < MEM_INVALID_SIZE) {
+        //invalid pointer
+        return ERROR;
+    }
+    if (ptr >= cur_pcb->brk && ptr < cur_pcb->stack_base) {
+        //it is visiting invalid pages
+        return ERROR;
+    }
+
+    return 0;
+}
+
+inline int handle_getpid() {
     return cur_pcb->pid;
 }
 
@@ -43,7 +56,6 @@ int handle_fork() {
     //push the child process into ready q
     push_back_q(&ready_q, child_pcb);
 
-    
     if (get_fpl_size() < 4 + addr_to_pn(UP_TO_PAGE((void *)USER_STACK_LIMIT - cur_pcb->stack_base)) + addr_to_pn(UP_TO_PAGE(cur_pcb->brk - MEM_INVALID_SIZE))) {
         //not enough space to fork the current process
         return ERROR;
@@ -76,7 +88,7 @@ int handle_delay(int delay) {
 
 int handle_brk(void *addr) {
     addr = (void *)UP_TO_PAGE(addr);
-    if(addr < MEM_INVALID_SIZE) {
+    if (addr < MEM_INVALID_SIZE) {
         //impossible
         return ERROR;
     }
@@ -84,7 +96,7 @@ int handle_brk(void *addr) {
         //should not cross the red zone
         return ERROR;
     }
-    if(addr > cur_pcb->brk && addr_to_pn(addr - cur_pcb->brk) > get_fpl_size()) {
+    if (addr > cur_pcb->brk && addr_to_pn(addr - cur_pcb->brk) > get_fpl_size()) {
         //don't have enough physical pages
         return ERROR;
     }
@@ -109,12 +121,61 @@ int handle_brk(void *addr) {
     return 0;
 }
 
+int find_next_null(void *ptr) {
+    while (ptr < cur_pcb->brk) {
+        if (*ptr == '\0') {
+            return 0;
+        }
+        ptr++;
+    }
+    if (ptr >= cur_pcb->stack_base) {
+        while (ptr < USER_STACK_LIMIT) {
+            if(*ptr == '\0') {
+                return 0;
+            }
+            ptr++;
+        }
+    }
+    return -1;
+}
+
 int handle_exec(char *filename, char **argvec, ExceptionInfo *info) {
     //TODO parameter check
-    TracePrintf(LEVEL, "in exec\n");
+    if (check_ptr(filename) == -1) {
+        //invalid pointer
+        return ERROR;
+    }
+
+    if(find_next_null(filename) == -1) {
+        //invalid character array, is not followed by '\0'
+        return ERROR;
+    }
+    char **arg_tmp = argvec;
+    int ok = 0;
+    while(check_ptr(argvec) != -1) {
+        if(*argvec == NULL) {
+            ok = 1;
+            break;
+        }
+        else {
+            if(check_ptr(*argvec) == -1 || find_next_null(*argvec) == -1) {
+                //invalid pointer or invalid character array which is not followed by '\0';
+                return ERROR;
+            }
+        }
+        argvec++;
+    }
+    if(!ok) {
+        //invalid argvec
+        return ERROR;
+    }
 
     //need to copy the name since LoadProgram is not buffering it
     char *name = (char *)malloc(strlen(filename) + 1);
+    if (name == NULL) {
+        //run out of memory
+        return ERROR;
+    }
     memcpy(name, filename, strlen(filename) + 1);
     int ret = LoadProgram(filename, argvec, info, get_pt0(), cur_pcb);
     if (ret == -1) {
@@ -136,8 +197,9 @@ void handle_exit(int status) {
     if (cur_pcb->parent) {
         if (cur_pcb->parent->waiting) {
             if (find_and_erase_q(&wait_q, cur_pcb->parent) == -1) {
-                //something wrong
-                //TODO
+                //impossible
+                TracePrintf(LEVEL, "something wrong when calling Exit, going to halt\n");
+                Halt();
             }
             pcb *pa = cur_pcb->parent;
             void **args;
@@ -174,6 +236,10 @@ void handle_exit(int status) {
 
 int handle_wait(int *status_ptr) {
     TracePrintf(LEVEL, "in handle wait\n");
+    if (check_ptr(status_ptr) == -1) {
+        //it is visiting invalid pages
+        return ERROR;
+    }
     q_node *p = exit_q.head->nxt;
     while (p != exit_q.tail) {
         exit_status *tmp = (exit_status *)p->ptr;
@@ -199,6 +265,17 @@ int handle_wait(int *status_ptr) {
 }
 
 int handle_tty_read(int tty_id, void *buf, int len) {
+    if (len == 0)
+        return 0;
+    if (buf >= USER_STACK_LIMIT || buf < MEM_INVALID_SIZE || len < 0) {
+        //invalid call
+        return ERROR;
+    }
+    if ((buf < cur_pcb->brk && buf + len >= cur_pcb->brk) || (buf > cur_pcb->stack_base && buf + len >= USER_STACK_LIMIT)) {
+        //buf will visit invalid pages
+        return ERROR;
+    }
+
     tty_buf *term = &tty[tty_id];
     // if (term->reading) {
     //     //if some process is reading, simply wait
@@ -233,47 +310,37 @@ int handle_tty_read(int tty_id, void *buf, int len) {
 }
 
 int handle_tty_write(int tty_id, void *buf, int len) {
-    if(len == 0) return 0;
+    if (len == 0)
+        return 0;
+    if (buf >= USER_STACK_LIMIT || buf < MEM_INVALID_SIZE || len < 0) {
+        //invalid call
+        return ERROR;
+    }
+    if ((buf < cur_pcb->brk && buf + len >= cur_pcb->brk) || (buf > cur_pcb->stack_base && buf + len >= USER_STACK_LIMIT)) {
+        //buf will visit invalid pages
+        return ERROR;
+    }
 
     tty_buf *term = &tty[tty_id];
     write_node *wn = (write_node *)malloc(sizeof(write_node));
-    if(wn == NULL) {
+    if (wn == NULL) {
         //run out of memory
-        return ERROR; 
+        return ERROR;
     }
     wn->p = cur_pcb;
     wn->buf = malloc(len);
     wn->len = len;
-    if(wn->buf == NULL) {
+    if (wn->buf == NULL) {
         //run out of memory
         return ERROR;
     }
     memcpy(wn->buf, buf, len);
     push_back_q(&tty_write_q[tty_id], wn);
-    if(!term->writing) {
+    if (!term->writing) {
         term->writing = 1;
         TtyTransmit(tty_id, wn->buf, len);
     }
     schedule_next();
-    // if (term->writing) {
-    //     //if some process is writing, simply wait
-    //     push_back_q(&tty_write_q[tty_id], cur_pcb);
-    //     schedule_next();
-    // }
-    // //now we can write to the termnial
-    // term->writing = 1;
-    // memcpy(term->out_buf, buf, len);
-    // TtyTransmit(tty_id, term->out_buf, len);
 
-    // //wait until finishing transmission
-    // push_front_q(&tty_write_q[tty_id], cur_pcb);
-    // schedule_next();
-
-    // term->writing = 0;
-    // if (tty_write_q[tty_id].size) {
-    //     //wake up a waiting process
-    //     pcb *p = (pcb *)pop_front_q(&tty_write_q[tty_id]);
-    //     push_back_q(&ready_q, p);
-    // }
     return 0;
 }

@@ -304,6 +304,16 @@ int copy_user_space(void *brk, void *stack_base, ptl_node *new_pt_info) {
     return 0;
 }
 
+int test_heap() {
+    //we need at least some bytes availble in heap to terminate the current process
+    void *p = malloc(64);
+    if(p == NULL) {
+        return -1;
+    }
+    free(p);
+    return 0;
+}
+
 int SetKernelBrk(void *addr) {
     TracePrintf(LEVEL, "MEM_MGR: set kernel brk, new addr: 0x%x, number of pages needed: %d\n", addr, addr_to_pn(UP_TO_PAGE(addr - kernel_brk)));
     //if the requested addr is too large
@@ -393,7 +403,6 @@ int init_memory_manager(void *org_brk, unsigned int pmem_size) {
     }
     //then link pages higher than the kernel break to phys_limt
     *(ll *)p = (ll)kernel_brk;
-    printf("kernel break pg: %d\n", addr_to_pn(kernel_brk));
     p = kernel_brk;
     fpl_size++;
     ll pmem_limit = DOWN_TO_PAGE(pmem_size);

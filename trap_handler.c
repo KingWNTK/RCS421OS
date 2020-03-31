@@ -2,9 +2,9 @@
 #include <comp421/yalnix.h>
 #include <stdio.h>
 
+#include "kernel_call_handler.h"
 #include "memory_manager.h"
 #include "trap_handler.h"
-#include "kernel_call_handler.h"
 //the trap vector table;
 void (*trap_vec_tb[TRAP_VECTOR_SIZE])(ExceptionInfo *);
 
@@ -18,10 +18,11 @@ void do_schedule() {
     //have to do ContextSwitch
     //or keep cur_pcb unchanged and restore cur_pcb's tick_exe to 2
     if (ready_q.size) {
+        //pop first, since it frees some memory
+        pcb *nxt = (pcb *)pop_front_q(&ready_q);
         if (cur_pcb != idle_pcb) {
             push_back_q(&ready_q, cur_pcb);
         }
-        pcb *nxt = (pcb *)pop_front_q(&ready_q);
         nxt->tick_exe = 2;
         if (ContextSwitch(switch_ctx, &cur_pcb->ctx, cur_pcb, nxt) == -1) {
             TracePrintf(LEVEL, "something wrong when calling ContextSwitch, going to halt\n");
@@ -56,8 +57,6 @@ void handle_trap_kernel(ExceptionInfo *info) {
 
 void handle_trap_clock(ExceptionInfo *info) {
     store_exp_info(info);
-    // printf("trap clock\n");
-    // TracePrintf(LEVEL, "current available page: %d\n", get_fpl_size());
     maintain_delay_q();
     if (cur_pcb != idle_pcb) {
         cur_pcb->tick_exe--;
@@ -69,14 +68,14 @@ void handle_trap_clock(ExceptionInfo *info) {
 
 void hanlde_trap_illegal(ExceptionInfo *info) {
     store_exp_info(info);
-
-    printf("trap illegal\n");
+    TracePrintf(LEVEL, "Trap illegal: terminating current process, error code: %d\n", info->code);
+    handle_exit(ERROR);
 }
 
 void handle_trap_memory(ExceptionInfo *info) {
     store_exp_info(info);
     TracePrintf(LEVEL, "Trap memory addr: %x\n", info->addr);
-    if(info->addr >= USER_STACK_LIMIT || info->addr < MEM_INVALID_SIZE) {
+    if (info->addr >= USER_STACK_LIMIT || info->addr < MEM_INVALID_SIZE) {
         TracePrintf(LEVEL, "Trap memory: terminating pid: %d due to visiting addr outside user space\n", cur_pcb->pid);
         handle_exit(ERROR);
         return;
@@ -85,20 +84,20 @@ void handle_trap_memory(ExceptionInfo *info) {
     void *tar_addr = DOWN_TO_PAGE(info->addr);
     void *cur_addr = DOWN_TO_PAGE(cur_pcb->stack_base);
 
-    if(tar_addr < cur_pcb->brk + PAGESIZE) {
-        //the new sp has crossed the red zone, can't let taht happen
+    if (tar_addr < cur_pcb->brk + PAGESIZE) {
+        //the new sp has crossed the red zone, can't let it happen
         TracePrintf(LEVEL, "Trap memory: terminating pid: %d due to growing the current stack into red zone\n", cur_pcb->pid);
         handle_exit(ERROR);
         return;
     }
-    if(tar_addr >= cur_addr) {
+    if (tar_addr >= cur_addr) {
         TracePrintf(LEVEL, "Trap memory: terminating pid: %d due to other reason\n", cur_pcb->pid);
         handle_exit(ERROR);
         return;
     }
 
-    while(cur_addr > tar_addr) {
-        if(grab_pg(addr_to_pn(cur_addr) - 1, PROT_READ | PROT_WRITE, PROT_READ | PROT_WRITE) == -1) {
+    while (cur_addr > tar_addr) {
+        if (grab_pg(addr_to_pn(cur_addr) - 1, PROT_READ | PROT_WRITE, PROT_READ | PROT_WRITE) == -1) {
             TracePrintf(LEVEL, "Trap memory: terminating pid: %d due to running out of memory\n", cur_pcb->pid);
             handle_exit(ERROR);
             return;
@@ -110,18 +109,18 @@ void handle_trap_memory(ExceptionInfo *info) {
 
 void handle_trap_math(ExceptionInfo *info) {
     store_exp_info(info);
-
-    printf("trap math\n");
+    TracePrintf(LEVEL, "Trap math: terminating current process, error code: %d\n", info->code);
+    handle_exit(ERROR);
 }
 
 void handle_trap_tty_receive(ExceptionInfo *info) {
     store_exp_info(info);
-    printf("trap tty receive\n");
+    TracePrintf(LEVEL, "trap tty receive\n");
     tty_buf *term = &tty[info->code];
     int len = TtyReceive(info->code, line_buf, TERMINAL_MAX_LINE);
     //push the current line to the in buf
     char *buf = (char *)malloc(len);
-    if(buf == NULL) {
+    if (buf == NULL) {
         //no more memory
         TracePrintf(LEVEL, "run out of memory in trap tty receive, going to halt\n");
         Halt();
@@ -141,7 +140,7 @@ void handle_trap_tty_receive(ExceptionInfo *info) {
 
 void handle_trap_tty_transmit(ExceptionInfo *info) {
     store_exp_info(info);
-    printf("trap tty transmit\n");
+    TracePrintf(LEVEL, "trap tty transmit\n");
     tty_buf *term = &tty[info->code];
     write_node *wn = (write_node *)pop_front_q(&tty_write_q[info->code]);
     //unblock the waiting process
@@ -149,14 +148,13 @@ void handle_trap_tty_transmit(ExceptionInfo *info) {
     free(wn->buf);
     free(wn);
 
-    if(tty_write_q[info->code].size) {
+    if (tty_write_q[info->code].size) {
         write_node *nxt = (write_node *)(tty_write_q[info->code].head->nxt->ptr);
         TtyTransmit(info->code, nxt->buf, nxt->len);
-    }
-    else {
+    } else {
         term->writing = 0;
     }
-    if(cur_pcb == idle_pcb) {
+    if (cur_pcb == idle_pcb) {
         do_schedule();
     }
 }

@@ -36,7 +36,7 @@ typedef struct pcb {
     SavedContext ctx;
     //parent of this process
     struct pcb *parent;
-
+    //queue of all its children
     queue children;
 
     int waiting;

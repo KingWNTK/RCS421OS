@@ -126,8 +126,9 @@ void maintain_delay_q() {
         q_node *nxt = p->nxt;
         tmp->tick_delay--;
         if (tmp->tick_delay == 0) {
-            push_back_q(&ready_q, tmp);
+            //always do erase first, since it will generate some memory
             erase_before(&delay_q, nxt);
+            push_back_q(&ready_q, tmp);
         }
         p = nxt;
     }
@@ -195,6 +196,10 @@ int init_process_controller() {
 
 void store_exp_info(ExceptionInfo *info) {
     cur_pcb->exp_info = info;
+    if (test_heap() == -1) {
+        TracePrintf(LEVEL, "Running out of memory, going to halt\n");
+        Halt();
+    }
 }
 
 // void restore_exp_info(ExceptionInfo *info) {

@@ -29,7 +29,9 @@ ALL = yalnix idle init add\
 	test/brktest test/bigstack test/blowstack test/console test/delaytest test/exectest\
 	test/forktest0 test/forktest1 test/forktest1b test/forktest2 test/forktest2b test/forktest3\
 	test/forkwait0c test/forkwait0p test/forkwait1 test/forkwait1b test/forkwait1c test/forkwait1d\
-	test/init test/init1 test/init2 test/init3 test/shell
+	test/init test/init1 test/init2 test/init3 test/shell\
+	test/trapillegal test/trapmath test/trapmemory\
+	test/ttyread1 test/ttywrite1 test/ttywrite2 test/ttywrite3
 
 #
 #	You must modify the KERNEL_OBJS and KERNEL_SRCS definitions
