@@ -48,7 +48,7 @@ void test_fork() {
 
 void test_wait() {
     int ret = Fork();
-    if (ret != 0) {
+    if (ret == 0) {
         char *filename = "add";
         char *argvec[] = {
             "add",
@@ -68,7 +68,7 @@ void test_wait() {
 }
 void test_exit() {
     int ret = Fork();
-    if (ret != 0) {
+    if (ret == 0) {
         char *filename = "add";
         char *argvec[] = {
             "add",
@@ -128,6 +128,6 @@ int main() {
     // test_exit();
     printf("running init\n");
     while (1) {
-        test_write();
+        test_wait();
     }
 }

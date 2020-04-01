@@ -123,14 +123,14 @@ int handle_brk(void *addr) {
 
 int find_next_null(void *ptr) {
     while (ptr < cur_pcb->brk) {
-        if (*ptr == '\0') {
+        if (*(char *)ptr == '\0') {
             return 0;
         }
         ptr++;
     }
     if (ptr >= cur_pcb->stack_base) {
         while (ptr < USER_STACK_LIMIT) {
-            if(*ptr == '\0') {
+            if(*(char *)ptr == '\0') {
                 return 0;
             }
             ptr++;
@@ -152,18 +152,18 @@ int handle_exec(char *filename, char **argvec, ExceptionInfo *info) {
     }
     char **arg_tmp = argvec;
     int ok = 0;
-    while(check_ptr(argvec) != -1) {
-        if(*argvec == NULL) {
+    while(check_ptr(arg_tmp) != -1) {
+        if(*arg_tmp == NULL) {
             ok = 1;
             break;
         }
         else {
-            if(check_ptr(*argvec) == -1 || find_next_null(*argvec) == -1) {
+            if(check_ptr(*arg_tmp) == -1 || find_next_null(*arg_tmp) == -1) {
                 //invalid pointer or invalid character array which is not followed by '\0';
                 return ERROR;
             }
         }
-        argvec++;
+        arg_tmp++;
     }
     if(!ok) {
         //invalid argvec
