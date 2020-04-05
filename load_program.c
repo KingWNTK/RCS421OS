@@ -148,7 +148,7 @@ LoadProgram(char *name, char **args, ExceptionInfo *exp_info, struct pte *pt0, p
     // >>>> pages already allocated to this process that will be
     // >>>> freed below before we allocate the needed pages for
     // >>>> the new program being loaded.
-    if (get_fpl_size() < text_npg + data_bss_npg + stack_npg) {
+    if (get_fpl_size() + addr_to_pn(cur_pcb->brk) - MEM_INVALID_PAGES + addr_to_pn((void *)USER_STACK_LIMIT - cur_pcb->stack_base) < text_npg + data_bss_npg + stack_npg) {
 	TracePrintf(0,
 	    "LoadProgram: program '%s' size too large for physical memory\n",
 	    name);
