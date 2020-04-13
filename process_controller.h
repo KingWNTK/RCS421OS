@@ -38,7 +38,7 @@ typedef struct pcb {
     struct pcb *parent;
     //queue of all its children
     queue children;
-
+    //whether current process is waiting to write
     int waiting;
 
     ExceptionInfo *exp_info;
@@ -81,8 +81,6 @@ void push_front_q(queue *q, void *p);
 void *pop_front_q(queue *q);
 
 void store_exp_info(ExceptionInfo *info);
-
-// void restore_exp_info(ExceptionInfo *info);
 
 void maintain_delay_q();
 

@@ -209,6 +209,7 @@ void handle_exit(int status) {
             es->status = status;
             args[0] = pa;
             args[1] = es;
+            //since we already have a waiting parent, directly copy the return values to parent's kernel stack
             if (ContextSwitch(save_wait_ret, &cur_pcb->ctx, cur_pcb, args) == -1) {
                 TracePrintf(LEVEL, "something wrong when calling ContextSwitch, going to halt\n");
                 Halt();
@@ -277,11 +278,6 @@ int handle_tty_read(int tty_id, void *buf, int len) {
     }
 
     tty_buf *term = &tty[tty_id];
-    // if (term->reading) {
-    //     //if some process is reading, simply wait
-    //     push_back_q(&tty_read_q[tty_id], cur_pcb);
-    //     schedule_next();
-    // }
     while (term->in_buf.size == 0) {
         //if there's nothing to read, go back to the the queue
         push_back_q(&tty_read_q[tty_id], cur_pcb);

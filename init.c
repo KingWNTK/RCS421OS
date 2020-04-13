@@ -126,8 +126,9 @@ void test_write() {
 }
 int main() {
     // test_exit();
-    printf("running init\n");
     while (1) {
-        test_wait();
+        //test_wait();
+        printf("running init\n");
+        Delay(2);
     }
 }

@@ -196,15 +196,12 @@ int init_process_controller() {
 
 void store_exp_info(ExceptionInfo *info) {
     cur_pcb->exp_info = info;
+    //always make sure we have some space in the kernel heap to terminate the current process
     if (test_heap() == -1) {
         TracePrintf(LEVEL, "Running out of memory, going to halt\n");
         Halt();
     }
 }
-
-// void restore_exp_info(ExceptionInfo *info) {
-//     info->sp = cur_pcb->sp;
-// }
 
 SavedContext *switch_ctx(SavedContext *ctxp, void *p1, void *p2) {
     pcb *pcb1 = (pcb *)p1, *pcb2 = (pcb *)p2;
@@ -340,6 +337,8 @@ SavedContext *clean_and_switch(SavedContext *ctxp, void *p1, void *p2) {
 }
 
 SavedContext *save_wait_ret(SavedContext *ctxp, void *p1, void *p2) {
+    //child process has exited, if the parent process is waiting
+    //we need to write the return code to its regs[1]
     pcb *pcb1 = (pcb *)p1;
     void **args = (void **)p2;
     pcb *pcb2 = (pcb *)args[0];

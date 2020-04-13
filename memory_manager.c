@@ -162,7 +162,6 @@ void push_ptl(int pfn, int which_half) {
                 //delete p from page table list
                 pre->nxt = p->nxt;
                 ptl_size--;
-                printf("%p %d\n", p, p->pfn);
                 free(p);
                 return;
             }
@@ -218,7 +217,7 @@ void print_ptl() {
     TracePrintf(LEVEL, "ptl: ");
     while (p->nxt) {
         p = p->nxt;
-        printf("(%d, %d)->", p->pfn, p->which_half);
+        TracePrintf(LEVEL, "(%d, %d)->", p->pfn, p->which_half);
     }
     TracePrintf(LEVEL, "\n");
 }
@@ -360,11 +359,9 @@ int init_memory_manager(void *org_brk, unsigned int pmem_size) {
 
     //map the phys pages already used in region 1 to the same page number in virtual memory
     itr = addr_to_pn(VMEM_1_BASE);
-    // printf("Before working on itr, itr is: %d, 0x%x\n", itr, pn_to_addr(itr));
 
     int brk_pn = addr_to_pn(kernel_brk);
     int text_pn = addr_to_pn(&_etext);
-    // printf("&_etext is: %d, 0x%x\n", text_pn, &_etext);
     while (itr != brk_pn) {
         if (itr < text_pn) {
             set_pg_tb_entry(itr, 1, PROT_READ | PROT_EXEC, 0, itr);
@@ -375,7 +372,6 @@ int init_memory_manager(void *org_brk, unsigned int pmem_size) {
         itr++;
     }
 
-    // printf("After working on itr, itr is now: 0x%x\n", pn_to_addr(itr));
 
     //have to call malloc here to let malloc know that we want to reserve four vpn for use
     malloc(PAGESIZE * 4);

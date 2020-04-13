@@ -48,6 +48,7 @@ int copy_kernel_stack(void *kernel_stack_cp, ptl_node* new_pt_info);
 //return -1 if we don't have enough memory
 int copy_user_space(void *brk, void *sp, ptl_node* new_pt_info);
 
+//test the kernel heap, make sure we at least have some space to terminate the current process
 int test_heap();
 
 /**

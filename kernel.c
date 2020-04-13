@@ -11,10 +11,17 @@
  * and common functions the kernel
  */
 
-// #define MEMORY_MANAGER_UNIT_TEST
 
 #undef LEVEL
 #define LEVEL 5
+
+
+/**
+ * Some simple test cases to test whether the memory manager is working properly
+ * By defining MEMORY_MANAGER_UNIT_TEST, KernelStart will run these tests first and then load idle and init programs
+ */
+
+// #define MEMORY_MANAGER_UNIT_TEST
 
 void test_memory_alloc() {
     printf("\n>>>>start testing memory alloc\ninit free pages: %d\n", get_fpl_size());
@@ -83,6 +90,8 @@ void test_ptl() {
 void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, char **cmd_args) {
     TracePrintf(LEVEL, "kernel start called\n");
 
+    //init memory manager, it MUST be the first thing to do
+    //since we want to be able to use virtual memory as soon as possible
     init_memory_manager(orig_brk, pmem_size);
     TracePrintf(LEVEL, "init memory manager done\n");
 
@@ -93,8 +102,8 @@ void KernelStart(ExceptionInfo *info, unsigned int pmem_size, void *orig_brk, ch
     TracePrintf(LEVEL, "init process controller done\n");
 #ifdef MEMORY_MANAGER_UNIT_TEST
     test_grab_free();
-    // test_memory_alloc();
-    // test_ptl();
+    test_memory_alloc();
+    test_ptl();
 #endif
     //now we should get ready to load the first program.
     //we first load idle, and use the current region 0 as its region 0
